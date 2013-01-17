@@ -6,9 +6,8 @@ object mergeTargetToMilestone {
 
   val milestoneForBranch = Map(
     "2.10.x" -> "2.10.1-RC1",
-    "2.10.0-wip" -> "2.10.0-RC3",
-    "master" -> "2.11.0-M1",
-    "2.9.x" -> "2.9.3-RC1")
+    "master" -> "2.11.0-M2",
+    "2.9.x" -> "2.9.3-RC2")
 
   import play.api.libs.concurrent.Execution.Implicits._
 
@@ -33,13 +32,16 @@ object mergeTargetToMilestone {
       // println((state, tgt, milestone, title))
 
       val milestoneName = milestoneForBranch(tgt)
-      val milestoneNumber = milestones(milestoneName)
-      val body = Json.toJson(Map("milestone" -> milestoneNumber))
 
-      val f = WS.url("https://api.github.com/repos/scala/scala/issues/"+ number).withHeaders(("Authorization", "token "+ token)).execute("PATCH", body)
-      f onFailure{ case res: Response => println(s"FAILED: #$number --> milestone $milestoneName (${res.statusText})") }
-      f onSuccess{ case res: Response => println(s"#$number --> milestone $milestoneName (${res.statusText})") }
-      f
+      if (milestones.isDefinedAt(milestoneName)) {
+        val milestoneNumber = milestones(milestoneName)
+        val body = Json.toJson(Map("milestone" -> milestoneNumber))
+
+        val f = WS.url("https://api.github.com/repos/scala/scala/issues/"+ number).withHeaders(("Authorization", "token "+ token)).execute("PATCH", body)
+        f onFailure{ case res: Response => println(s"FAILED: #$number --> milestone $milestoneName (${res.statusText})") }
+        f onSuccess{ case res: Response => println(s"#$number --> milestone $milestoneName (${res.statusText})") }
+        f
+      } else println(s"Milestone not found: $milestoneName (for #$number)")
     }
   }
 
@@ -48,14 +50,17 @@ object mergeTargetToMilestone {
   def main(args: Array[String]) = {
     val token = args(0)
 
+    do {
     // for ( _ <-
     for (
       // token <- makeToken(args(1), args(2)); // it's probably best to do this only once and store the token
       milestones <- milestones;
-      pulls  <- WS.url("https://api.github.com/repos/scala/scala/pulls?state=open").get();
+      pulls  <- WS.url("https://api.github.com/repos/scala/scala/pulls?milestone=none&state=open").get();
       pull   <- pulls.json.as[Seq[JsValue]] ) {
         assignMilestone(pull, milestones, token)
       }
     // ) { Play.stop() }
+      println("Hit enter to check for new PRs.")
+    } while(System.in.read == 10)
   }
 }
